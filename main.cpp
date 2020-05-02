@@ -6,8 +6,9 @@ using namespace std;
 sf::Font font;
 
  sf::RenderWindow window(sf::VideoMode(1200, 700), "Gob");
-const int noOfChars=4, noOfEnemies=4;
-
+const int noOfChars=4, noOfEnemies=4, speed=5;
+sf::Texture hightex;
+sf::Sprite highlight;
 struct Armour{
     int armour;
     Armour(int a){
@@ -48,15 +49,21 @@ struct Being{
     bool friendly;
     char facing;
     int getCombatBonus(){
-        return combat+weapon->bonus-2*fightCount;
+        int b=combat;
+        if(weapon!=NULL){
+            b+=weapon->bonus;
+        }
+        return b-2*fightCount;
     }
     int getArmourPercent(){
-        if(shield==NULL)
-            return armour->armour;
-        else
+        int a=0;
+        if(shield!=NULL)
+            a+=shield->armour;
+        if(armour!=NULL)
         {
-            return armour->armour+shield->armour;
+            a+=armour->armour;
         }
+        return a;
         
     }
     sf::Sprite getSprite(){
@@ -70,6 +77,11 @@ struct Being{
 
         friendly=_friendly;
         facing='n';
+        stamina=20;
+        weapon=NULL;
+        sidearm=NULL;
+        shield=NULL;
+        armour=NULL;
     }
     void takeDamage(int d){
         stamina-=d;
@@ -80,10 +92,11 @@ Being *chars[noOfChars],*enemies[4];
 struct Battle{
     Being * turnOrder[100];
     int currentTurn;
+    int noOfCombatants;
     Battle(){
 
     };
-    void startTurn(){
+    void startRound(){
         list<Being*>combatants;
         for(int i=0;i<noOfChars;i++){
             if(chars[i]->stamina>0)
@@ -94,7 +107,7 @@ struct Battle{
                 combatants.push_back(enemies[i]);
             }
         }
-        int noOfCombatants=combatants.size();
+        noOfCombatants=combatants.size();
         for(int i=0;i<noOfCombatants;i++){
             int j=rand()%(noOfCombatants-i);
             list<Being*>::iterator it=combatants.begin();
@@ -105,6 +118,22 @@ struct Battle{
             combatants.remove(*it);
         }
         currentTurn=0;
+    }
+    Being* getCurrent(){
+        return turnOrder[currentTurn];
+    }
+    void takeTurn(){
+        highlight.setPosition(turnOrder[currentTurn]->x*64,turnOrder[currentTurn]->y*64);
+        if(turnOrder[currentTurn]->friendly){
+
+        }else{
+            endTurn();
+        }
+    }
+    void endTurn(){
+        if(++currentTurn==noOfCombatants){
+            startRound();
+        }
     }
 
 };
@@ -132,16 +161,23 @@ void fight(Being *a, Being *b){
 
 
 void draw(){
-    for(int i=0;i<sizeof(chars)/sizeof(*chars);i++){
-        window.draw(chars[i]->getSprite());
+    window.clear();
+    window.draw(highlight);
+    for(int i=0;i<battle.noOfCombatants;i++){
+        window.draw(battle.turnOrder[i]->getSprite());
     }
-    for(int i=0;i<sizeof(enemies)/sizeof(*enemies);i++){
-        window.draw(enemies[i]->getSprite());
-    }
+    window.display();
 
 }
 
-
+Being *getOccupant(int x, int y){
+    for(int i=0;i<battle.noOfCombatants;i++){
+        if(battle.turnOrder[i]->x==x&&battle.turnOrder[i]->y==y){
+            return battle.turnOrder[i];
+        }
+    }
+    return NULL;
+}
 
 
 void setup(){
@@ -150,11 +186,39 @@ void setup(){
         font.loadFromFile("fonts/thestrong.ttf");
     for(int i =0;i<noOfChars;i++){
         chars[i]=new Being("Player "+to_string(i), "player", true);
+        chars[i]->x=i+1;
+        chars[i]->y=i+1;
     }
     for(int i=0;i<noOfEnemies;i++){
         enemies[i]=new Being("Goblin "+to_string(i), "goblin");
+        enemies[i]->x=i+5;
+        enemies[i]->y=i+1;
     }
-  
+    hightex.loadFromFile("pics/highlight.png");
+    highlight.setTexture(hightex);
+}
+int dist(int x1, int y1, int x2, int y2){
+    return abs(x1-x2)+abs(y1-y2);
+}
+void click(sf::Vector2i pos){
+    int x= (int)pos.x/64;
+    int y=(int)pos.y/64;
+    Being *current=battle.getCurrent();
+    if(current->friendly){
+        Being *occupant=getOccupant(x,y);
+        if(occupant!=NULL){
+            if(dist(current->x,current->y,x,y)==1 &&!occupant->friendly){
+                fight(current,occupant);
+                battle.endTurn();
+            }
+        }else{
+            if(dist(current->x,current->y,x,y)<=speed){
+                current->x=x;
+                current->y=y;
+                battle.endTurn();
+            }
+        }
+    }
 }
 
 int main(){
@@ -164,6 +228,7 @@ int main(){
     sf::Clock clock;
     sf::Time elapsed;
     sf::Event event;
+    battle.startRound();
 
     window.setFramerateLimit(20);
     while (window.isOpen())
@@ -175,12 +240,18 @@ int main(){
                 window.close();
             if(event.type==sf::Event::MouseButtonPressed){
                 sf::Vector2i pos=sf::Mouse::getPosition(window);
+                    //                 if(event.mouseButton.button==sf::Mouse::Button::Left)leftClick(pos);
+                    // else rightClick(pos);
+                click(pos);
 
             }
         }
         elapsed = clock.getElapsedTime();
+        battle.takeTurn();
+        draw();
 
     }
 
     return 0;
 }
+
